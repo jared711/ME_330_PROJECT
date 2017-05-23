@@ -1,0 +1,260 @@
+#include "xc.h"
+//#include "libpic30.h"
+#pragma config FNOSC = FRC
+
+void config_ad() {
+
+    _TRISA0 = 1; // TRISA/B, pg. 45 datasheet
+    _ANSA0 = 1;
+    _TRISA1 = 1; // TRISA/B, pg. 45 datasheet
+    _ANSA1 = 1; // ANSA/B, pg. 136-137
+    _PVCFG = 0b00; // AD1CON2<15:14>, pg. 212-213 datasheet
+    _NVCFG = 0b0; // AD1CON2<13>
+    _ADCS = 0b00000011; // AD1CON3<7:0>, pg. 213 datasheet
+    _SSRC = 0b0111; // AD1CON1<7:4>, pg. 211 datasheet
+    _ASAM = 0b1; // AD1CON1<2>
+    _SAMC = 0b0001; // AD1CON3<12:8>
+    _CSCNA = 0b1; // AD1CON2<10>
+
+    _CSS0 = 0b1;
+    _CSS1 = 0b1; // AD1CSSH/L, pg. 217
+    _MODE12 = 0b1; // AD1CON1<10>
+    _FORM = 0b00; // AD1CON1<9:8>
+    _BUFREGEN = 0b1; // AD1CON2<11>
+    AD1CON2bits.SMPI = 3; // AD1CON2<6:2>
+    _ADON = 1; // AD1CON1<15>
+}
+volatile int aim = 0;
+volatile int test = 0;
+volatile int position = 2;
+volatile int stcounter = 0;
+volatile int stopnow = 0;
+/*void sensors_ir() {
+
+    if (ADC1BUF0 > 3000 && ADC1BUF1 < 3000) {
+        aim = 1;
+    }
+
+    if (ADC1BUF0 > 3000 && ADC1BUF1 > 3000) {
+        aim = 2;
+
+    }
+
+    if (ADC1BUF0 < 3000 && ADC1BUF1 > 3000) {
+        aim = 3;
+    }
+}
+*/
+
+void __attribute__((interrupt, no_auto_psv)) _OC1Interrupt(void) {
+
+   
+        
+   
+ if (aim == 1) {
+ //if (ADC1BUF0 > 3000 && ADC1BUF1 < 3000) {
+          _LATB12 = 1;
+       // aim = 1;
+       //   OC1RS = 40000;
+         // OC1R = 20000;
+        if (position == 2) {
+            stcounter++;
+            if (stcounter <= 100) {
+            _LATB9 = 1; //turn left 
+            } 
+            else {
+            OC1RS = 0;
+            OC1R = 0;
+            position = 1; //arrived at 1 so stop
+            stcounter = 0;
+            stopnow = 1;
+            }
+            }
+        if (position == 3) {
+            stcounter++;
+            if (stcounter <= 200) {
+            _LATB9 = 1; //turn left
+            }
+            else{
+            OC1RS = 0;
+            OC1R = 0;
+            position = 1; //arrived at 1 so stop
+            stcounter = 0;   
+            stopnow = 1;
+            }
+            }
+        if (position == 1) {
+            OC1RS = 0;
+            OC1R = 0;
+            stcounter = 0;
+            stopnow = 1;
+            }
+   }
+if (aim == 2) { 
+ // if (ADC1BUF0 > 3000 && ADC1BUF1 > 3000){
+            _LATB13 = 1;
+            //aim = 2;
+            //OC1RS = 40000;
+            //OC1R = 20000;
+        if (position == 1){
+            stcounter++;
+            if (stcounter <= 100) {
+            _LATB9 = 0;  //turning left for 90 degree until at position 2
+          
+            } 
+            else {
+            OC1RS = 0;
+            OC1R = 0;
+            position = 2; //arrived at position 2
+            stcounter = 0;
+            stopnow = 1;
+            }
+            }
+        if (position == 3) {
+            stcounter++;
+            if (stcounter <= 100) { 
+            _LATB9 = 1; //turn left for 90 degree until at pos 2
+           
+            }
+            else {
+            OC1RS = 0;
+            OC1R = 0;
+            position = 2; //arrived at 2
+            stcounter = 0;
+             stopnow = 1;
+            }
+            }
+        if (position == 2) {
+            OC1RS = 0; 
+            OC1R = 0;//position is 2 so do nothing
+            stcounter = 0;
+            stopnow = 1;
+            }
+  }
+
+if (aim == 3) {
+// if (ADC1BUF0 < 3000 && ADC1BUF1 > 3000){
+            //aim =3;
+            _LATB14 = 1;
+           // OC1RS = 40000;
+          //  OC1R = 20000;
+         
+       if (position == 1){
+            stcounter++;
+            if (stcounter <= 200) {
+            _LATB9 = 0;
+           
+            } 
+            else {
+            OC1RS = 0;
+            OC1R = 0;
+            position = 3; //arrived at position 3 so stop
+            stcounter = 0;
+             stopnow = 1;
+            }
+            }
+       if (position == 2) {
+            stcounter++;          
+            if (stcounter <= 100) {
+            _LATB9 = 0;
+           
+            } 
+            else {
+            OC1RS = 0;
+            OC1R = 0;
+            position = 3; //arrived at position 3 so stop
+            stcounter = 0;
+             stopnow = 1;
+            }
+            }
+       if (position == 3) {
+            OC1RS = 0;
+            OC1R = 0;
+            stcounter = 0; 
+             stopnow = 1;//already at 3 so do nothing
+           }
+    }
+
+    _OC1IF = 0;
+}
+
+int main() {
+
+    _TRISB12 = 0;
+    _ANSB12 = 0;
+    _TRISB13 = 0;
+    _ANSB13 = 0;
+    _TRISB14 = 0;
+    _ANSB14 = 0;
+
+    _TRISA6 = 0;
+    _TRISB9 = 0;
+
+    _OC1IP = 4;
+    _OC1IE = 1;
+    _OC1IF = 0;
+
+    OC1CON1bits.OCTSEL = 0b111;
+    OC1CON1bits.OCM = 0b110;
+    OC1CON2bits.SYNCSEL = 0b11111;
+    OC1CON2bits.OCTRIG = 0b0;
+
+    config_ad();
+    OC1RS = 0;
+    OC1R = 0;
+    
+    while (1) {
+        
+      if (ADC1BUF0 > 3000 && ADC1BUF1 < 3000) {
+        //_LATB12 = 1;
+         
+          if ( stopnow == 0 ){
+          aim = 1;
+          OC1RS = 40000;
+          OC1R = 20000;
+          }
+          else if (stopnow == 1 && aim == 1){
+          OC1RS = 0;
+          OC1R = 0;
+          }
+          else{
+              stopnow = 0;
+          }
+        }
+        if (ADC1BUF0 > 3000 && ADC1BUF1 > 3000){
+           // _LATB13 = 1;
+         
+          if ( stopnow == 0 ){
+          aim = 2; 
+          OC1RS = 40000;
+          OC1R = 20000;
+          }
+          else if (stopnow == 1 && aim == 2){
+          OC1RS = 0;
+          OC1R = 0;
+          }
+          else{
+              stopnow = 0;
+          }
+        }
+        
+       if (ADC1BUF0 < 3000 && ADC1BUF1 > 3000){
+            // _LATB14 = 1;
+       
+          if ( stopnow == 0 ){
+          aim = 3;
+          OC1RS = 40000;
+          OC1R = 20000;
+          }
+          else if (stopnow == 1 && aim ==3){
+          OC1RS = 0;
+          OC1R = 0;
+          }
+          else{
+              stopnow = 0;
+          }
+        }   
+           
+    }
+    return 0;
+}
