@@ -1,0 +1,565 @@
+/*
+ * File:   Main.c
+ * Author: jared711
+ *
+ * This is the final project code. Everything should go into this main 
+ * function file. The general map for this code is as follows
+ * 
+ * section 1: Spin the robot until it finds the dispenser, then drive towards
+ *            the dispenser
+ * section 2: drive away from the dispenser a certain amount, turn on the laser 
+ *            breaking servo
+ * section 3: Turn on DC motors, aim the launch tube, check for ball presence, 
+ *            check for black ball, let ball through with servo, fire ball.
+ * 
+ * Created on March 24, 2017, 10:31 AM
+ */\
+
+#include "xc.h" // the all encompassing header file necessary for all MPLAB
+#pragma config FNOSC = FRC // 8 MHz Oscillator
+#define FCY 4000000UL //
+#include <libpic30.h>
+
+volatile int aim = 2;
+volatile int BLACKBALL = 0;
+volatile int test = 0;
+volatile int position = 2;
+volatile int stcounter = 0;
+volatile int stopnow = 0;
+volatile int step_counter = 0;
+volatile int step_max = 0;
+volatile double SERVO_PERIOD = 1; //seconds, should be between 0 and 1
+volatile double WHEEL_SPEED = 0.5; //should be between 0 and 1
+volatile int BACKWARDS = 0; //should be 1 if both push sensors have gone high
+volatile int PHASE1_start = 1;
+volatile int PHASE2_start = 1;
+volatile int PHASE3_start = 1;
+volatile int PHASE = 1; // 1 if spinning and looking for sensor
+                        // 2 if moving backwards and collecting balls
+                        // 3 if collecting balls, scanning them, and shooting
+
+void __attribute__((interrupt, no_auto_psv)) _T1Interrupt(void) { 
+    _T1IF = 0;
+} // reset the timer flag, This interrupt should not be enabled*/
+
+void __attribute__((interrupt, no_auto_psv)) _T2Interrupt(void) {    
+    if (OC2R == 250) { //if at far position, go to near position
+        OC2R = 450;
+        PR2 = SERVO_PERIOD*62500/5;
+    } else if (OC2R == 450) { //if at near position, go to far position
+        OC2R = 250;
+        PR2 = SERVO_PERIOD*62500;
+    }
+    else{
+        OC2R = 250;
+    }
+    _T2IF = 0; // reset the timer flag
+}//This timer interrupt makes the ziptie laser breaker alternate
+
+void __attribute__((interrupt, no_auto_psv)) _T3Interrupt(void){ 
+ //This timer, timer3 used to read void _ISR _T3Interrupt(void)
+  _T3IF = 0; // clear interrupt flag
+  step_counter++;
+  }//This timer counts time to make sure the wheels roll the right distance
+
+void __attribute__((interrupt, no_auto_psv)) _T4Interrupt(void) { 
+    _T4IF = 0;
+} // reset the timer flag, This interrupt should not be enabled*/
+
+void __attribute__((interrupt, no_auto_psv)) _T5Interrupt(void) { 
+    _T5IF = 0;
+} // reset the timer flag, This interrupt should not be enabled*/
+
+void __attribute__((interrupt, no_auto_psv)) _OC1Interrupt(void) {
+    //This interrupt runs the aimer
+    if (aim == 1) {
+        if (position == 2) {
+            stcounter++;
+            if (stcounter <= 100) {
+            _LATB7 = 1; //turn left 
+            } 
+            else {
+            OC1RS = 0;
+            OC1R = 0;
+            position = 1; //arrived at 1 so stop
+            stcounter = 0;
+            stopnow = 1;
+            }
+            }
+        if (position == 3) {
+            stcounter++;
+            if (stcounter <= 200) {
+            _LATB7 = 1; //turn left
+            }
+            else{
+            OC1RS = 0;
+            OC1R = 0;
+            position = 1; //arrived at 1 so stop
+            stcounter = 0;   
+            stopnow = 1;
+            }
+            }
+        if (position == 1) {
+            OC1RS = 0;
+            OC1R = 0;
+            position = 1;
+            stcounter = 0;
+            stopnow = 1;
+            }
+   }
+if (aim == 2) { 
+        if (position == 1){
+            stcounter++;
+            if (stcounter <= 100) {
+            _LATB7 = 0;  //turning left for 90 degree until at position 2
+          
+            } 
+            else {
+            OC1RS = 0;
+            OC1R = 0;
+            position = 2; //arrived at position 2
+            stcounter = 0;
+            stopnow = 1;
+            }
+            }
+        if (position == 3) {
+            stcounter++;
+            if (stcounter <= 100) { 
+            _LATB7 = 1; //turn left for 90 degree until at pos 2
+                     }
+            else {
+            OC1RS = 0;
+            OC1R = 0;
+            position = 2; //arrived at 2
+            stcounter = 0;
+             stopnow = 1;
+            }
+            }
+        if (position == 2) {
+            OC1RS = 0; 
+            OC1R = 0;//position is 2 so do nothing
+            stcounter = 0;
+            position = 2;
+            stopnow = 1;
+            }
+  }
+
+if (aim == 3) {
+      if (position == 1){
+               stcounter++;
+               if (stcounter <= 200) {
+               _LATB7 = 0;
+               } 
+     	else {
+            OC1RS = 0;
+            OC1R = 0;
+            position = 3; //arrived at position 3 so stop
+            stcounter = 0;
+            stopnow = 1;
+            }
+            }
+     if (position == 2) {
+            stcounter++;          
+            if (stcounter <= 100) {
+            _LATB7 = 0;
+             } 
+            else {
+            OC1RS = 0;
+            OC1R = 0;
+            position = 3; //arrived at position 3 so stop
+            stcounter = 0;
+             stopnow = 1;
+            }
+            }
+       if (position == 3) {
+            OC1RS = 0;
+            OC1R = 0;
+            position = 3;
+            stcounter = 0; 
+            stopnow = 1;//already at 3 so do nothing
+           }
+    }
+
+    _OC1IF = 0;
+}    //This interrupt runs the aimer
+
+void __attribute__((interrupt, no_auto_psv)) _OC2Interrupt(void){
+    _OC2IF = 0; // clear interrupt flag
+}//OC2 runs the servos, which are run on timer interrupts, so this is not needed.
+
+void __attribute__((interrupt, no_auto_psv)) _OC3Interrupt(void) {
+
+   /* if (step_counter <= 250) { ///go out 6 inches
+        OC3RS = 40000;
+        OC3R = 20000;
+        _LATB8 = 1;
+        _LATB9 = 1;
+        step_counter++;
+    } else {
+        OC3RS = 0;
+        OC3R = 0;
+    }*/
+    _OC3IF = 0;
+
+}
+
+void __attribute__((interrupt, no_auto_psv)) _CNInterrupt(void) {
+
+    if (_RB15 == 0 && _RB14 == 0) { // if hit both walls
+        OC3RS = 0;
+        __delay_ms(2000);
+        OC3RS = 9999;
+        _LATB9 = 0; //stop both wheels wait and then drive out 6 inches and then disable the cn interrupt
+        _LATB8 = 0;
+        __delay_ms(350);
+        OC3RS = 0;
+        PHASE = 2;
+        _CNIP = 0;
+        _CNIE = 0;
+    }
+
+    /*if (_RB15 == 1 && _RB14 == 0) {
+        servo_off();
+    }
+
+    if (_RB15 == 0 && _RB14 == 1) {
+        servo_on();
+    }*/
+    
+    _CNIF = 0;
+}
+
+void set_up_timer1() {
+    
+    T1CONbits.TON = 1; // Turn on Timer1
+    T1CONbits.TCS = 0; // Internal clock
+    T1CONbits.TCKPS = 0b01; // 1:8 prescale
+    PR1 = 0xFFFF; // Timer period of 65535 yields 0.13 seconds
+    TMR1 = 0;
+
+    _T1IP = 1; // Timer 1 priority is four
+    _T1IE = 0; // Timer 1 interrupt is disabled // we use T2 now
+    _T1IF = 0; // Timer 1 flag is off
+} // set this up when ready to use servo
+
+void set_up_timer2() {
+    T2CONbits.TON = 1; // Turn on Timer1
+    T2CONbits.TCS = 0; // Internal clock
+    T2CONbits.TCKPS = 0b10; // 1:64 prescale 01 is 8 
+    
+    //PR2 = 0x8FFF; // Timer period 36863 yields 0.5898 seconds for each ziptie movement
+    //PR2 = 0xF424; // Timer Period of 62500 yields 1 second for each ziptie movement
+    PR2 = SERVO_PERIOD*62500; // timer now changeable from volatile int
+    
+    TMR2 = 0;
+
+    _T2IP = 2; // Timer 1 priority is two
+    _T2IE = 1; // Timer 1 interrupt is enabled
+    _T2IF = 0; // Timer 1 flag is off 
+} // set this up when ready to use servo
+
+void set_up_timer3() {
+    T3CONbits.TON = 1; //Enable
+    T3CONbits.TCS = 0; //Set source to Internal Clock
+    T3CONbits.TCKPS = 0b10; //Prescale: 1/64
+    PR3 = 500; //5000;       //Set Period so freq = 100 Hz
+
+    TMR3 = 0;
+    _T3IP = 3; //Priority is three
+    _T3IE = 1; //Enable Interrupt
+    _T3IF = 0; //Clear Interrupt flag
+}// set this up when ready to use aimer motor
+
+void set_up_OC1() {
+    OC1CON1bits.OCTSEL = 0b111;
+    OC1CON1bits.OCM = 0b110;
+    OC1CON2bits.SYNCSEL = 0b11111;
+    OC1CON2bits.OCTRIG = 0b0; 
+    
+    _OC1IP = 4;
+    _OC1IE = 1;
+    _OC1IF = 0;
+    
+    OC1RS = 0;
+    OC1R = 0;
+} // OC1 runs the aimer
+
+void turn_off_OC1() {
+    _OC1IE = 0;
+}
+
+void set_up_OC2() {
+    // Configure PWM for servo
+    OC2CON1bits.OCTSEL = 0b100; // compare with timer 1
+    OC2CON1bits.OCM = 0b110; //edge aligned PWM mode
+    OC2CON2bits.SYNCSEL = 0b00010;
+    OC2CON2bits.OCTRIG = 0b0;
+    OC2RS = 9999;
+    OC2R = 250; //Initial position should be 1100 if OC2RS is 9999
+} //OC2 runs the servo
+
+void turn_off_OC2() {
+    _OC2IE = 0;
+}
+
+void set_up_OC3() {
+    OC3CON1bits.OCTSEL = 0b111; //
+    OC3CON1bits.OCM = 0b110; //Select Edge-Aligned PWM mode
+    OC3CON2bits.SYNCSEL = 0b11111; //
+    OC3CON2bits.OCTRIG = 0b0;
+    
+    _OC3IP = 5;
+    _OC3IE = 1;
+    _OC3IF = 0;
+    
+    
+    OC3RS = 9999;
+    OC3R = 0.3*OC3RS; //Duty Cycle
+} // OC3 runs the wheels
+
+void turn_off_OC3() {
+    _OC3IE = 0;
+}
+
+void set_up_CN(){
+    _CN11PUE=1;
+    _CN12PUE=1;
+    _CN11IE = 1;
+    _CN12IE = 1;
+    _CNIP = 6; // Set CN interrupt priority (IPC4 register)
+    _CNIF = 0; // Clear interrupt flag (IFS1 register)
+    _CNIE = 1;
+
+}
+
+void set_up_pins() {
+    //*****************************************
+    //Set up pins
+    //*****************************************
+
+    // pin 2
+    _TRISA0 = 1; //Input from Right IR sensor
+    _ANSA0 = 1; // is analog
+    // pin 3
+    _TRISA1 = 1; //Input from Left IR sensor
+    _ANSA0 = 1; // is analog
+    // pin 4
+    _TRISB0 = 0; // PWM output for both servo motors
+    _ANSB0 = 1; // is Analog
+    // pin 5
+    _TRISB1 = 0; //Step of Wheels (both)
+    _ANSB1 = 0; //is not analog
+    // pin 6
+    _TRISB2 = 1; //Input from QRD114 Ball Sensor 
+    _ANSB2 = 1;
+    // pin 7
+    _TRISA2 = 1; //Input from QRD114 Ball Sensor
+    _ANSA2 = 1; // Is analog
+    // pin 8
+    _TRISA3 = 1; //Input from QRD114 Color Sensor
+    // pin 9
+    _TRISB4 = 1; //No Connection
+    // pin 10
+    _TRISA4 = 1; //No connection
+    // pin 11
+    _TRISB7 = 0; //Direction of Aimer
+    // pin 12
+    _TRISB8 = 0; //Direction of Wheel 1
+    // pin 13
+    _TRISB9 = 0; //Direction of Wheel 2
+    // pin 14
+    _TRISA6 = 0; // Aimer Stepper
+    //digital output
+    // pin 15
+    _TRISB12 = 1; //Push Sensor input 1 //??????????????? switched to B14??
+    // pin 16
+    _TRISB13 = 1; //Push Sensor input 2 //??????????????? switched to B15??
+    // pin 17
+    _TRISB14 = 1; // Push Sensor input 1
+    _ANSB14 = 0;
+    // pin 18
+    _TRISB15 = 1;
+    _ANSB15 = 0;// Push sensor input 2
+
+} // set this up at the beginning of the code
+
+void set_up_control_registers() {
+    //AD1CON Registers**********************************
+    //AD1CON1
+    _ADON = 1; // A/D converter is operating AD1CON1<15>
+    //_SSRC = 0b0111; //commented by jared 4/13  // Sample Clock Source Select Bits (autoconvert)
+    _SSRC = 0b0111;               //AD1CON1<7:4>, pg. 211 datasheet
+    _ASAM = 0b1;     // Auto Start Bit (sampling begins immediately)
+                     // AD1CON1<2>
+    _MODE12 = 0b1;   // 12 bit A/D operation  AD1CON1<10>
+    _FORM = 0b00;    // absolute decimal result, unsigned AD1CON1<9:8>
+    //AD1CON2
+    _CSCNA = 0b1;   // Scans inputs AD1CON2<10>
+    _PVCFG = 0b00;  // AVDD (pin 20) is positive reference voltage
+                    //AD1CON2<15:14>, pg. 212-213 datasheet
+    _NVCFG = 0b0;   // AVSS (pin 19) is negative reference voltage
+                    //AD1CON2<13>
+    _BUFREGEN = 0b1;// conversion result is loaded into buffer
+                    //AD1CON2<11>
+    /*** Select Interrupt Rate ***/
+	// interrupt rate should reflect number of analog channels used, e.g. if 
+    // 5 channels, interrupt every 5th sample
+    AD1CON2bits.SMPI = 3; // interrupts at completion of 4 samples
+                          //AD1CON2<6:2>
+    //AD1CON3
+    _ADCS = 0b00000011; // A/D conversion clock select (4*TCY = TAD)
+                        // AD1CON3<7:0>, pg. 213 datasheet
+    //make sure Tad is at least 600ns, see Table 29-41 datasheet
+    //_ADCS = 0b00000101;	//A/D conversion clock select (6*TCY = TAD) 
+                        //AD1CON3<7:0>, pg. 213 datasheet //we have two of these because Jared's lab used this one
+    
+    _SAMC = 0b0001;     // Auto-sample 1 TAD  AD1CON3<12:8>
+    //AD1CSSL
+    	// choose which channels to scan, e.g. for ch AN12, set _CSS12 = 1;  //MAKE SURE ALL INPUT CHANNELS ARE SCANNED
+    _CSS0 = 0b1; // scan AN0 (pin 2) AD1CSSH/L, pg. 217 (left sensor)
+    _CSS1 = 0b1; // scan AN1 (pin 3) AD1CSSH/L, pg. 217 (right sensor)
+    _CSS13 = 1;	// AD1CSSH/L, pg. 217 //AN13 is pin 7 (QR sensor)
+    
+} // set this up at the beginning
+
+void wheel_spin() {
+    _LATB9 = 0; //spins the base counter clockwise 
+    _LATB8 = 1;
+}//spins the base counter clockwise
+
+void wheel_forward() {
+    _LATB9 = 1; //sends the base forwards (with push sensors at front)
+    _LATB8 = 1;
+}//sends the base forwards (with push sensors at front)
+
+void wheel_stop(){
+    OC3R = 0;
+    OC3RS = 0;
+}
+
+void wheel_go(){
+
+    OC3RS = 9999;
+    OC3R = 0.3*OC3RS;
+}
+
+void set_up_servo() {
+    _CN4PUE = 1; //
+    set_up_timer1();
+    set_up_timer2();
+    set_up_OC2();
+        
+}
+
+void servo_off(){
+    _T2IE = 0;
+}
+
+void servo_on(){
+    _T2IE = 1;
+}
+
+int main(void) {
+
+    set_up_pins();
+    
+   // wheel_stop();
+    //PHASE = 2;
+
+    //OC1RS = 40000;
+    //OC1R = 20000;
+    //__delay_ms(5000);
+    //PHASE = 1;
+    //set_up_OC3();
+   // wheel_forward();
+    //set_up_CN();
+
+    while (1) {
+        if (PHASE == 1) {
+            if (PHASE1_start == 1){
+                set_up_control_registers();
+                set_up_OC3();//set up wheels
+                wheel_spin();
+                set_up_CN(); //set up push buttons
+                PHASE1_start = 0;
+            }
+     
+           
+            
+            if (ADC1BUF0 > 2000){
+                __delay_ms(1500); //rotate base to back up to dispenser 
+                wheel_forward();
+               
+                // need to add code to restart process if not in the corner
+            }
+        }
+        if (PHASE == 2) {
+            if (PHASE2_start == 1) {
+                set_up_servo();
+                PHASE2_start = 0;
+            }
+            if (ADC1BUF13 > 1500){ // High means white, low means black
+                PHASE = 3;
+            }      
+        }
+        if (PHASE == 3) {
+            set_up_OC1();
+            if (ADC1BUF0 > 2000 && ADC1BUF1 < 2000) {
+                if (stopnow == 0) {
+                    aim = 1;
+                    OC1RS = 40000;
+                    OC1R = 20000;
+                } else if (stopnow == 1 && aim == 1) {
+                    OC1RS = 0;
+                    OC1R = 0;
+                } else {
+                    stopnow = 0;
+                }
+            }
+            if (ADC1BUF0 < 2000 && ADC1BUF1 < 2000) {
+                if (stopnow == 0) {
+                    aim = 2;
+                    OC1RS = 40000;
+                    OC1R = 20000;
+                } else if (stopnow == 1 && aim == 2) {
+                    OC1RS = 0;
+                    OC1R = 0;
+                } else {
+                    stopnow = 0;
+                }
+            }
+
+            if (ADC1BUF0 < 2000 && ADC1BUF1 > 2000) {
+                if (stopnow == 0) {
+                    aim = 3;
+                    OC1RS = 40000;
+                    OC1R = 20000;
+                } else if (stopnow == 1 && aim == 3) {
+                    OC1RS = 0;
+                    OC1R = 0;
+                } else {
+                    stopnow = 0;
+                }
+            }
+            //if (ADC1BUF0 > 2000 && ADC1BUF1 > 2000) {
+              //  stopnow = 1;
+                    
+            //}
+
+        }
+    }
+    return 0;
+}
+
+/*void straight_line(){
+int step_counter = 0;
+   step_max = 200;
+    if (step_counter < step_max){
+        step_counter++ ;
+         }
+    else{
+   T3CONbits.TON = 0;        
+   _T3IE = 0;
+   }
+}*/
+
